@@ -10,15 +10,12 @@ class WazuhV4_8:
             vuln = item.get("vulnerability")
             cve = vuln.get("id")
 
-            # Construct a unique key for deduplication
-            dupe_key = f"{cve}-{item.get('agent', {}).get('id')}"
+            # Unique key should be only CVE (not including agent)
+            dupe_key = cve
 
-            if dupe_key in dupes:
-                continue  # Skip if this finding has already been processed
+            agent_name = item.get("agent").get("name")
 
             description = vuln.get("description")
-            # description += "\nAgent id:" + item.get("agent").get("id")
-            # description += "\nAgent name:" + item.get("agent").get("name")
             severity = vuln.get("severity")
             cvssv3_score = vuln.get("score").get("base") if vuln.get("score") else None
             publish_date = vuln.get("published_at").split("T")[0]
@@ -35,41 +32,44 @@ class WazuhV4_8:
                 "Informational": "Info",
                 "Untriaged": "Info",
             }
-            # Get DefectDojo severity and default to "Info" if severity is not in the mapping
             severity = SEVERITY_MAP.get(severity, "Info")
 
             title = (
                 cve + " affects (version: " + item.get("package").get("version") + ")"
             )
 
-            # Create endpoint from agent name
-            agent_name = item.get("agent").get("name")
-            
-            # Prepare endpoints list (will be processed after Finding is saved)
-            endpoints = []
-            if agent_name:
-                endpoints = [Endpoint(host=agent_name)]
+            if dupe_key not in dupes:
+                # First occurrence of this CVE - create new Finding
+                find = Finding(
+                    title=title,
+                    test=test,
+                    description=description,
+                    severity=severity,
+                    references=references,
+                    static_finding=True,
+                    component_name=item.get("package").get("name"),
+                    component_version=item.get("package").get("version"),
+                    cvssv3_score=cvssv3_score,
+                    publish_date=publish_date,
+                    unique_id_from_tool=dupe_key,
+                    date=detection_time,
+                )
+                
+                if agent_name:
+                    find.unsaved_endpoints = [Endpoint(host=agent_name)]
 
-            find = Finding(
-                title=title,
-                test=test,
-                description=description,
-                severity=severity,
-                references=references,
-                static_finding=True,
-                component_name=item.get("package").get("name"),
-                component_version=item.get("package").get("version"),
-                cvssv3_score=cvssv3_score,
-                publish_date=publish_date,
-                unique_id_from_tool=dupe_key,
-                date=detection_time,
-            )
-            
-            # Add endpoints to unsaved_endpoints for post-processing
-            if endpoints:
-                find.unsaved_endpoints = endpoints
-
-            find.unsaved_vulnerability_ids = [cve]
-            dupes[dupe_key] = find
+                find.unsaved_vulnerability_ids = [cve]
+                dupes[dupe_key] = find
+            else:
+                # CVE already exists - add new endpoint to existing Finding
+                find = dupes[dupe_key]
+                
+                # Add endpoint
+                if agent_name:
+                    new_endpoint = Endpoint(host=agent_name)
+                    if hasattr(find, 'unsaved_endpoints'):
+                        find.unsaved_endpoints.append(new_endpoint)
+                    else:
+                        find.unsaved_endpoints = [new_endpoint]
 
         return list(dupes.values())

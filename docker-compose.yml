@@ -12,6 +12,7 @@ services:
       context: ./
       dockerfile: "Dockerfile.nginx-alpine"
     image: "defectdojo/defectdojo-nginx:${NGINX_VERSION:-latest}"
+    restart: unless-stopped
     depends_on:
       uwsgi:
         condition: service_started
@@ -20,22 +21,23 @@ services:
       DD_UWSGI_HOST: "${DD_UWSGI_HOST:-uwsgi}"
       DD_UWSGI_PORT: "${DD_UWSGI_PORT:-3031}"
     volumes:
-      - defectdojo_media:/usr/share/nginx/html/media
+      - ./vaults/media:/usr/share/nginx/html/media
     ports:
       - target: 8080
         published: ${DD_PORT:-8080}
         protocol: tcp
         mode: host
-      - target: 8443
-        published: ${DD_TLS_PORT:-8443}
-        protocol: tcp
-        mode: host
+      # - target: 8443
+      #   published: ${DD_TLS_PORT:-8443}
+      #   protocol: tcp
+      #   mode: host
   uwsgi:
     build:
       context: ./
       dockerfile: "Dockerfile.django-${DEFECT_DOJO_OS:-debian}"
       target: release
     image: "defectdojo/defectdojo-django:${DJANGO_VERSION:-latest}"
+    restart: unless-stopped
     depends_on:
       initializer:
         condition: service_completed_successfully
@@ -57,9 +59,10 @@ services:
         - type: bind
           source: ./docker/extra_settings
           target: /app/docker/extra_settings
-        - "defectdojo_media:${DD_MEDIA_ROOT:-/app/media}"
+        - "./vaults/media:${DD_MEDIA_ROOT:-/app/media}"
   celerybeat:
     image: "defectdojo/defectdojo-django:${DJANGO_VERSION:-latest}"
+    restart: unless-stopped
     depends_on:
       initializer:
         condition: service_completed_successfully
@@ -80,6 +83,7 @@ services:
           target: /app/docker/extra_settings
   celeryworker:
     image: "defectdojo/defectdojo-django:${DJANGO_VERSION:-latest}"
+    restart: unless-stopped
     depends_on:
       initializer:
         condition: service_completed_successfully
@@ -98,7 +102,7 @@ services:
         - type: bind
           source: ./docker/extra_settings
           target: /app/docker/extra_settings
-        - "defectdojo_media:${DD_MEDIA_ROOT:-/app/media}"
+        - "./vaults/media:${DD_MEDIA_ROOT:-/app/media}"
   initializer:
     image: "defectdojo/defectdojo-django:${DJANGO_VERSION:-latest}"
     depends_on:
@@ -121,21 +125,23 @@ services:
           target: /app/docker/extra_settings
   postgres:
     image: postgres:18.2-alpine@sha256:035b9ab53cfa147d7202b61f5f7782b939ae815b7d6bc81c96b7b42ff1fca950
+    restart: unless-stopped
     environment:
       PGDATA: /var/lib/postgresql/data
       POSTGRES_DB: ${DD_DATABASE_NAME:-defectdojo}
       POSTGRES_USER: ${DD_DATABASE_USER:-defectdojo}
       POSTGRES_PASSWORD: ${DD_DATABASE_PASSWORD:-defectdojo}
     volumes:
-      - defectdojo_postgres:/var/lib/postgresql/data
+      - ./vaults/postgres:/var/lib/postgresql/data
   valkey:
     image: valkey/valkey:7.2.12-alpine@sha256:32860ea506d2dde08333d1cca2bf28c46bc84e9654308eabf801f77548f72573
+    restart: unless-stopped
     volumes:
       # we keep using the redis volume as renaming is not possible and copying data over
       # would require steps during downtime or complex commands in the intializer
-      - defectdojo_redis:/data
-volumes:
-  defectdojo_postgres: {}
-  defectdojo_media: {}
-  defectdojo_redis: {}
+      - ./vaults/redis:/data
+# volumes:
+#   defectdojo_postgres: {}
+#   defectdojo_media: {}
+#   defectdojo_redis: {}
 

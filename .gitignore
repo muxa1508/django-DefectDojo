@@ -29,6 +29,7 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
+vaults/
 
 # Installer logs
 pip-log.txt

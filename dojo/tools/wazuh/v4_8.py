@@ -52,7 +52,7 @@ class WazuhV4_8:
                     cvssv3_score=cvssv3_score,
                     publish_date=publish_date,
                     unique_id_from_tool=dupe_key,
-                    date=detection_time,
+                    date=detection_time
                 )
                 
                 if agent_name:
